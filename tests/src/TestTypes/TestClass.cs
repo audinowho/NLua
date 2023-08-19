@@ -115,6 +115,11 @@ namespace NLuaTest.TestTypes
             return strVal;
         }
 
+        public string getParamStrVal(string str)
+        {
+            return str;
+        }
+
         public int outVal(out int val)
         {
             val = 5;
@@ -289,6 +294,20 @@ namespace NLuaTest.TestTypes
         {
             k = 5;
             Console.WriteLine("Overload with out param" + i + ", " + j);
+        }
+
+        public string MethodOverload2(uint i)
+        {
+            Console.WriteLine("Overload with uint32 param: " + i );
+
+            return $"uint32:{i}";
+        }
+
+        public string MethodOverload2(string i)
+        {
+            Console.WriteLine("Overload with numeric string param: " + i);
+
+            return $"string:{i}";
         }
 
         public void Print(object format, params object[] args)

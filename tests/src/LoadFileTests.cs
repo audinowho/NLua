@@ -5,21 +5,21 @@ using NLua;
 
 using NUnit.Framework;
 
-#if __IOS__ || __TVOS__ || __WATCHOS__
+#if __IOS__ || __TVOS__ || __WATCHOS__ || __MACCATALYST__
 using Foundation;
 #endif
 
 namespace LoadFileTests
 {
     [TestFixture]
-#if __IOS__ || __TVOS__ || __WATCHOS__
+#if __IOS__ || __TVOS__ || __WATCHOS__ || __MACCATALYST__
     [Preserve (AllMembers = true)]
 #endif
     public class LoadLuaFile
     {
         public static  string GetScriptsPath(string name)
         {
-            string path = new Uri(typeof(LoadLuaFile).Assembly.CodeBase).AbsolutePath;
+            string path = new Uri(typeof(LoadLuaFile).Assembly.Location).AbsolutePath;
             path = Path.GetDirectoryName(path);
             path = Path.Combine(path, "scripts");
             path = Path.Combine (path, name);
@@ -72,7 +72,9 @@ namespace LoadFileTests
                 if (IntPtr.Size == 4)
                     file = GetScriptsPath("test_32.luac");
                 else
+                {
                     file = GetScriptsPath("test_64.luac");
+                }
 
                 lua.DoFile(file);
 
