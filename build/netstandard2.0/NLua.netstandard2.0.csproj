@@ -33,9 +33,12 @@
   <Import Project="..\..\src\NLua.Shared.projitems" Label="Shared" />
 
   <ItemGroup>
-    <PackageReference Include="KeraLua" Version="1.0.29" />
     <PackageReference Include="NUnit" Version="3.12.0" />
   </ItemGroup>
-  
-  <Import Project="..\targets\NLua.Sign.targets" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\KeraLua\build\netstandard2.0\KeraLua.NetStandard20.csproj" />
+  </ItemGroup>
+
+  <!-->Import Project="..\targets\NLua.Sign.targets" /-->
 </Project>
