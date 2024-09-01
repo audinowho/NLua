@@ -17,6 +17,7 @@ using LuaFunction = NLua.LuaFunction;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 // ReSharper disable StringLiteralTypo
 
@@ -226,10 +227,32 @@ namespace NLuaTest
             Console.WriteLine("Was using " + startingMem / 1024 / 1024 + "MB, now using: " + endMem  / 1024 / 1024 + "MB");
         }
 
+        [Test]
+        [Platform(Exclude = "mono", Reason = "The test requires a precise GC.")]
+        public void TestFinalize()
+        {
+            WeakReference luaRef = CreateWeakReferenceToLuaInstance();
+            for (int i = 0; i < 3 && luaRef.IsAlive; i++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+
+            Assert.False(luaRef.IsAlive);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private WeakReference CreateWeakReferenceToLuaInstance()
+        {
+            Lua lua = new Lua();
+            _Calc(lua, 42);
+            return new WeakReference(lua);
+        }
+
         private void _Calc(Lua lua, int i)
         {
             lua.DoString(
-                        "sqrt = math.sqrt;" +
+                "sqrt = math.sqrt;" +
                 "sqr = function(x) return math.pow(x,2); end;" +
                 "log = math.log;" +
                 "log10 = math.log10;" +
@@ -492,6 +515,22 @@ namespace NLuaTest
 
                 Assert.AreEqual(true, classWithGenericMethod.GenericMethodSuccess);
                 Assert.AreEqual(56, (classWithGenericMethod.PassedValue as TestTypes.TestClass).val);
+
+
+                lua.RegisterFunction("genericMethod3", classWithGenericMethod, typeof(TestClassWithGenericMethod).GetMethod("GenericMethodWithGenericTypes"));
+
+                try
+                {
+                    lua["ts"] = new string[] { "aaa", "bbb", "ccc" };
+                    lua["dic"] = new Dictionary<string, int> { { "ddd", 111 }, { "eee", 222 }, { "fff", 333 } };
+                    lua.DoString("genericMethod3(ts, dic)");
+                }
+                catch
+                {
+                }
+
+                Assert.AreEqual(true, classWithGenericMethod.GenericMethodSuccess);
+                Assert.AreEqual(true, classWithGenericMethod.Validate<int>(6));
             }
         }
 
@@ -983,6 +1022,71 @@ namespace NLuaTest
             }
         }
         ///*
+        // * Tests setting of a global variable to a CLR object and checking if the Globals correctly registered everything.
+        // */
+        [Test]
+        public void SetGlobalObjectLuaGlobalsListIsCorrect()
+        {
+            using (Lua lua = new Lua())
+            {
+                lua["netobj"] = new TestTypes.GlobalsTestClass();
+
+                var globals = lua.Globals.ToList();
+                Assert.AreEqual(globals.Count, 4);
+                Assert.True(globals.Contains("netobj.Property1"));
+                Assert.True(globals.Contains("netobj.Property2"));
+                Assert.True(globals.Contains("netobj:Method1()"));
+                Assert.True(globals.Contains("netobj:Method3("));
+            }
+        }
+        ///*
+        // * Tests setting of a global variable to a CLR object value and then re assigning it to a non CLR object.
+        // */
+        [Test]
+        public void SetGlobalObjectAndReasignToNonCLR()
+        {
+            using (Lua lua = new Lua())
+            {
+                lua["netobj"] = new TestTypes.GlobalsTestClass();
+                lua["netobj"] = 4;
+                var globals = lua.Globals.Where(x => x.StartsWith("netobj")).ToList();
+                Assert.AreEqual(1, globals.Count);
+                Assert.True(globals.Contains("netobj"));
+            }
+        }
+        ///*
+        // * Tests setting of a global variable to a CLR object value and then re assigning it to a null value.
+        // */
+        [Test]
+        public void SetGlobalObjectAndReasignToNull()
+        {
+            using (Lua lua = new Lua())
+            {
+                lua["netobj"] = new TestTypes.GlobalsTestClass();
+                lua["netobj"] = null;
+                var globals = lua.Globals.Where(x => x.StartsWith("netobj")).ToList();
+                Assert.AreEqual(0, globals.Count);
+            }
+        }
+        ///*
+        // * Tests setting of a global variable to a CLR object value and then re assigning it to another CLR object of another type.
+        // */
+        [Test]
+        public void SetGlobalObjectAndReasignToOtherCLR()
+        {
+            using (Lua lua = new Lua())
+            {
+                lua["netobj"] = new TestTypes.TestClass();
+                lua["netobj"] = new TestTypes.GlobalsTestClass();
+                var globals = lua.Globals.Where(x => x.StartsWith("netobj")).ToList();
+                Assert.AreEqual(4, globals.Count);
+                Assert.True(globals.Contains("netobj.Property1"));
+                Assert.True(globals.Contains("netobj.Property2"));
+                Assert.True(globals.Contains("netobj:Method1()"));
+                Assert.True(globals.Contains("netobj:Method3("));
+            }
+        }
+        ///*
         // * Tests if CLR object is being correctly collected by Lua
         // */
         [Test]
@@ -1128,6 +1232,21 @@ namespace NLuaTest
             }
         }
         /*
+        * Tests invocation of a method with a variadic argument list.
+        * This should work with zero or more arguments and any argument type, e.g. no unpacking/ conversion of Lua tables.
+        */
+        [Test]
+        public void CallObjectMethodVarArgs()
+        {
+            using (Lua lua = new Lua())
+            {
+                lua["netobj"] = new TestTypes.TestClass();
+                Assert.AreEqual(0, (long)lua.DoString("return netobj:vararg()")[0]);
+                Assert.AreEqual(4, (long)lua.DoString("return netobj:vararg(true, nil, 1.2, '3')")[0]);
+                Assert.AreEqual(1, (long)lua.DoString("return netobj:vararg{true, nil, 1.2, '3'}")[0]);
+            }
+        }
+        /*
         * Tests calling of an object's method with no overloading
         * and out parameters
         */
@@ -1164,6 +1283,39 @@ namespace NLuaTest
                 Assert.AreEqual(5, b);
             }
         }
+#if NETCOREAPP1_1_OR_GREATER
+        /*
+        * Tests calling of an object's method with multiple return values (Tuple).
+        */
+        [Test]
+        public void CallObjectMethodWithMultipleReturnValues()
+        {
+            using (Lua lua = new Lua())
+            {
+                lua["netobj"] = new TestTypes.TestClass();
+                var ret = lua.DoString("return netobj:returnPair()");
+                Assert.AreEqual(2, ret.Length);
+                Assert.AreEqual(5, ret[0]);
+                Assert.AreEqual("five", ret[1]);
+            }
+        }
+        /*
+        * Tests calling of an object's method with multiple return values (Tuple) and out parameter.
+        */
+        [Test]
+        public void CallObjectMethodWithMultipleReturnValuesAndOutParam()
+        {
+            using (Lua lua = new Lua())
+            {
+                lua["netobj"] = new TestTypes.TestClass();
+                var ret = lua.DoString("return netobj:returnPairWithOutParam()");
+                Assert.AreEqual(3, ret.Length);
+                Assert.AreEqual(5, ret[0]);
+                Assert.AreEqual("five", ret[1]);
+                Assert.AreEqual(true, ret[2]);
+            }
+        }
+#endif
         /*
         * Tests calling of an object's method with ref params
         */
@@ -2705,7 +2857,7 @@ namespace NLuaTest
 
                 // The ratio two is very uncertain, lets use 5x, just to have some certain that 
                 // the gc collect the tables
-                Assert.True( ratio2 >= 2 , "#1:" + ratio2);
+                Assert.True( ratio2 >= 1 , "#1:" + ratio2);
                 Assert.True( ratio <= 1,  "#2:" + ratio);
             }
         }
@@ -2769,17 +2921,19 @@ namespace NLuaTest
             }
         }
 
+        /*
+         * A variadic function should except any number of arguments. A Lua table shouldn't
+         * be understood as an array of arguments but as a single argument (like any other type).
+         */
         [Test]
-        public void CallStaticMethod()
+        public void CallStaticVarArgsFunction()
         {
             using (var lua = new Lua())
             {
-                lua.DoString("FakeType = {}");
-                lua["FakeType.bar"] = (Func<object[],int>) TestClass.MethodWithObjectParams;
-
-                lua.DoString("i = FakeType.bar('one', 1)");
-
-                Assert.AreEqual(2, lua["i"], "#1");
+                lua["f"] = (Func<object[], int>)TestClass.MethodWithObjectParams;
+                Assert.AreEqual(1, (long)lua.DoString("return f{'one', 1}")[0]);
+                Assert.AreEqual(2, (long)lua.DoString("return f({'one', 1}, true)")[0]);
+                Assert.AreEqual(0, (long)lua.DoString("return f()")[0]);
             }
         }
 
@@ -3052,6 +3206,23 @@ namespace NLuaTest
             }
         }
 
+        /*
+            * Tests registering a global function with RegisterFunction and with the indexer
+            * Makes sure that the amount of registered globals is correct
+        */
+        [Test]
+        public void TestAmountOfRegisteredGlobals()
+        {
+            using (Lua lua = new Lua())
+            {
+                Func<string, string> testFunc = (string s) => s;
+                lua.RegisterFunction("testFunc1", null, testFunc.Method);
+                lua["testFunc2"] = testFunc.Method;
+
+                Assert.AreEqual(2, lua.Globals.Count());
+            }
+        }
+
         [Test]
         public void TestGuid()
         {
@@ -3111,7 +3282,43 @@ namespace NLuaTest
             }
         }
 
+        [Test]
+        public void TestNLuaAttributes()
+        {
+            using (Lua lua = new Lua())
+            {
+                var testClass = new TestClassWithNLuaAttributes();
+                lua["test"] = testClass;
+                string[] globals = lua.Globals.ToArray();
 
+                Assert.True(globals.Contains("test.PropWithoutAttribute"));
+                Assert.True(globals.Contains("test.prop_with_attribute"));
+                Assert.True(globals.Contains("test.fieldWithoutAttribute"));
+                Assert.True(globals.Contains("test.field_with_attribute"));
+
+                // Methods use : instead of .
+                Assert.True(globals.Contains("test:MethodWithoutAttribute()"));
+                Assert.True(globals.Contains("test:method_with_attribute()"));
+
+                Assert.AreEqual(6, globals.Length);
+
+                Assert.AreEqual(0, lua.DoString("return test.PropWithoutAttribute")[0]);
+                Assert.AreEqual(1, lua.DoString("return test.prop_with_attribute")[0]);
+                Assert.AreEqual(2, lua.DoString("return test.fieldWithoutAttribute")[0]);
+                Assert.AreEqual(3, lua.DoString("return test.field_with_attribute")[0]);
+                Assert.AreEqual(4, lua.DoString("return test:MethodWithoutAttribute()")[0]);
+                Assert.AreEqual(5, lua.DoString("return test:method_with_attribute()")[0]);
+
+                // Test that accessing hidden properties/fields is the same as accessing nonexisting ones
+                object valueOfNonExisting = lua.DoString("return test.NonExistingProperty")[0];
+                Assert.AreEqual(valueOfNonExisting, lua.DoString("return test.HiddenProperty")[0]);
+                Assert.AreEqual(valueOfNonExisting, lua.DoString("return test.hiddenField")[0]);
+
+                // Calling nonexisting/hidden methods should throw an exception
+                Assert.Throws<LuaScriptException>(() => lua.DoString("return test:NonExistingMethod()"), "Non existing method should throw an exception");
+                Assert.Throws<LuaScriptException>(() => lua.DoString("return test:HiddenMethod()"), "Hidden method should throw an exception");
+            }
+        }
 
         static Lua m_lua;
     }

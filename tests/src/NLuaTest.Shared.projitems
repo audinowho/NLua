@@ -26,6 +26,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)TestTypes\TestClass3.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TestTypes\TestClassGeneric.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TestTypes\TestClassWithGenericMethod.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)TestTypes\TestClassWithNLuaAttributes.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TestTypes\TestClassWithMethodDefaultParameter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TestTypes\TestClassWithOverloadedMethod.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TestTypes\TestEnum.cs" />
@@ -50,5 +51,6 @@
     <Compile Include="$(MSBuildThisFileDirectory)Properties\AssemblyInfo.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TestTypes\Vector.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)TestTypes\VectorExtension.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)TestTypes\GlobalsTestClass.cs" />
   </ItemGroup>
 </Project>
